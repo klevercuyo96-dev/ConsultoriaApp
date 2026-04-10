@@ -5,7 +5,7 @@ from datetime import datetime
 
 # --- CONFIGURACIÓN DE BASE DE DATOS ---
 def conectar_db():
-    return sqlite3.connect("consultoria_sistema_final.db", check_same_thread=False)
+    return sqlite3.connect("consultoria_sistema_final_v2.db", check_same_thread=False)
 
 def crear_tablas():
     conn = conectar_db()

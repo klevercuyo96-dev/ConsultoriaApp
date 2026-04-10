@@ -29,19 +29,30 @@ def crear_tablas():
     conn.commit()
     conn.close()
 
-# --- FUNCIONES DE AYUDA (Lógica SRI) ---
+# --- FUNCIONES DE AYUDA ---
 def obtener_dia_vencimiento(digito):
     tabla = {1: 10, 2: 12, 3: 14, 4: 16, 5: 18, 6: 20, 7: 22, 8: 24, 9: 26, 0: 28}
     return tabla.get(digito, 28)
 
-# --- VISTAS ---
+def main():
+    st.set_page_config(page_title="Ashka Consultores", layout="wide")
+    crear_tablas()
+    
+    if 'autenticado' not in st.session_state:
+        st.session_state['autenticado'] = False
+
+    if not st.session_state['autenticado']:
+        login()
+    else:
+        menu_principal()
+
 def login():
     col_a, col_b, col_c = st.columns([1, 2, 1])
     with col_b:
         try:
             st.image("LOGO PNG PRINCIPAL ASHKA.jpg", width=250)
         except:
-            st.title("🏛️ ASHKA CONSULTORES")
+            st.title("🏢 ASHKA CONSULTORES")
         st.subheader("Gestión Tributaria y Laboral")
     
     st.divider()
@@ -61,112 +72,143 @@ def login():
                 st.error("⚠️ Usuario o clave incorrectos")
 
 def menu_principal():
-    # Sidebar minimalista
     st.sidebar.image("LOGO PNG PRINCIPAL ASHKA.jpg", width=120)
-    st.sidebar.write(f"👤 **{st.session_state['username']}** ({st.session_state['rol']})")
+    st.sidebar.write(f"👤 **{st.session_state['username']}**")
     
-    if st.sidebar.button("🏠 Panel Principal"):
+    if st.sidebar.button("🏠 Inicio / Panel"):
         st.session_state['pagina'] = "🏠 Inicio"
         st.rerun()
 
-    if st.sidebar.button("🚪 Cerrar Sesión"):
+    if st.sidebar.button("🚪 Salir"):
         st.session_state['autenticado'] = False
         st.rerun()
 
     conn = conectar_db()
     pag = st.session_state.get('pagina', "🏠 Inicio")
 
-    # --- PANTALLA DE INICIO (ESTILO LEXIS / TARJETAS) ---
+    # --- 🏠 INICIO / PANEL DE CONTROL ---
     if pag == "🏠 Inicio":
         st.title("Panel de Control")
         st.markdown("---")
         
+        # FILA 1 DE TARJETAS
         c1, c2, c3 = st.columns(3)
-        
         with c1:
             with st.container(border=True):
-                st.write("### 👥 Clientes")
-                st.write("Gestión de trámites rápidos.")
+                st.write("### 🆕 Trámites")
+                st.write("Registro de clientes nuevos.")
                 if st.button("Abrir Trámites", use_container_width=True):
                     st.session_state['pagina'] = "Tramites"
                     st.rerun()
         
         with c2:
             with st.container(border=True):
-                st.write("### 📊 Impuestos")
-                st.write("Control SRI y Fijos.")
+                st.write("### 🗓️ SRI Fijos")
+                st.write("Control de declaraciones mensuales.")
                 if st.button("Ver Calendario", use_container_width=True):
                     st.session_state['pagina'] = "Fijos"
                     st.rerun()
         
         with c3:
             with st.container(border=True):
-                st.write("### 💰 Devoluciones")
-                st.write("Cálculo de IVA.")
+                st.write("### 📊 IVA")
+                st.write("Cálculo de devoluciones.")
                 if st.button("Ver Devoluciones", use_container_width=True):
                     st.session_state['pagina'] = "IVA"
                     st.rerun()
 
+        # FILA 2 (SOLO PARA ADMIN)
+        if st.session_state['rol'] == 'admin':
+            st.write("")
+            ca, cb, cc = st.columns(3)
+            with ca:
+                with st.container(border=True):
+                    st.write("### 👥 Personal")
+                    st.write("Gestionar colaboradores.")
+                    if st.button("Gestionar Accesos", use_container_width=True):
+                        st.session_state['pagina'] = "Usuarios"
+                        st.rerun()
+
         st.divider()
-        st.subheader("🔔 Vencimientos Próximos (Clientes Fijos)")
-        df_fijos = pd.read_sql_query("SELECT nombre, ruc, noveno_digito, celular FROM declaraciones_fijas", conn)
-        
+        st.subheader("🔔 Alertas de Vencimiento SRI")
+        df_fijos = pd.read_sql_query("SELECT nombre, noveno_digito, celular FROM declaraciones_fijas", conn)
         if not df_fijos.empty:
             dia_hoy = datetime.now().day
-            for i, row in df_fijos.iterrows():
+            for _, row in df_fijos.iterrows():
                 vence = obtener_dia_vencimiento(row['noveno_digito'])
-                dias_faltan = vence - dia_hoy
-                
-                if 0 <= dias_faltan <= 3:
-                    with st.warning(f"⚠️ **{row['nombre']}** (RUC finaliza en {row['noveno_digito']}) vence el día {vence}"):
-                        mensaje = f"https://wa.me/593{row['celular']}?text=Estimado%20{row['nombre']},%20le%20recordamos%20que%20su%20declaración%20vence%20el%20día%20{vence}.%20Atentamente,%20Ashka%20Consultores."
-                        st.link_button("📲 Enviar WhatsApp", mensaje)
+                if 0 <= (vence - dia_hoy) <= 3:
+                    st.warning(f"⚠️ {row['nombre']} vence el día {vence}")
+                    link = f"https://wa.me/593{row['celular']}?text=Hola%20{row['nombre']},%20tu%20declaración%20vence%20el%20{vence}."
+                    st.link_button("📲 Notificar", link)
         else:
-            st.info("No hay vencimientos próximos.")
+            st.info("No hay clientes registrados en la base fija.")
 
     # --- SECCIÓN TRAMITES ---
     elif pag == "Tramites":
-        st.header("🆕 Registro de Trámites")
+        st.header("🆕 Registro de Trámites Rápidos")
         with st.form("f_nuevo"):
             nombre = st.text_input("Nombre Cliente")
-            ruc = st.text_input("RUC / Cédula")
-            entidad = st.selectbox("Entidad", ["SRI", "IESS", "BIESS", "MUNICIPIO"])
-            detalle = st.text_area("Descripción")
+            ruc = st.text_input("RUC")
+            entidad = st.selectbox("Entidad", ["SRI", "IESS", "MUNICIPIO"])
+            detalle = st.text_area("Detalle")
             if st.form_submit_button("Guardar"):
-                conn.execute("INSERT INTO clientes_tramites (nombre, ruc, entidad, detalle_tarea, estado, usuario_id) VALUES (?,?,?,?,'Por realizar',?)",
-                             (nombre, ruc, entidad, detalle, st.session_state['user_id']))
+                conn.execute("INSERT INTO clientes_tramites (nombre, ruc, entidad, detalle_tarea, estado) VALUES (?,?,?,?,'Por realizar')", (nombre, ruc, entidad, detalle))
                 conn.commit()
-                st.success("Guardado!")
+                st.success("Registrado!")
 
-    # --- SECCIÓN FIJOS (NUEVA LÓGICA) ---
+    # --- SECCIÓN FIJOS ---
     elif pag == "Fijos":
-        st.header("🗓️ Clientes Fijos y SRI")
-        with st.expander("Añadir Cliente Fijo"):
-            with st.form("f_fijo_new"):
-                n = st.text_input("Nombre")
-                r = st.text_input("RUC")
-                c = st.text_input("Celular (Ej: 0987654321)")
-                dig = st.number_input("Noveno Dígito", 0, 9)
-                t = st.selectbox("Tipo", ["Mensual", "Semestral", "Renta"])
-                if st.form_submit_button("Registrar"):
-                    conn.execute("INSERT INTO declaraciones_fijas (nombre, ruc, celular, noveno_digito, tipo_dec, usuario_id) VALUES (?,?,?,?,?,?)",
-                                 (n, r, c, dig, t, st.session_state['user_id']))
+        st.header("🗓️ Clientes Fijos (SRI)")
+        with st.form("f_fijos"):
+            c1, c2 = st.columns(2)
+            n = c1.text_input("Nombre")
+            r = c1.text_input("RUC")
+            cel = c2.text_input("Celular (Ej: 0999888777)")
+            dig = c2.number_input("Noveno Dígito", 0, 9)
+            if st.form_submit_button("Registrar"):
+                conn.execute("INSERT INTO declaraciones_fijas (nombre, ruc, celular, noveno_digito) VALUES (?,?,?,?)", (n, r, cel, dig))
+                conn.commit()
+                st.rerun()
+        df = pd.read_sql_query("SELECT * FROM declaraciones_fijas", conn)
+        st.dataframe(df)
+
+    # --- SECCIÓN IVA ---
+    elif pag == "IVA":
+        st.header("📊 Devoluciones de IVA")
+        with st.form("f_iva"):
+            c1, c2 = st.columns(2)
+            nom = c1.text_input("Cliente")
+            val = c1.number_input("Valor Solicitado $", min_value=0.0)
+            por = c2.slider("Comisión (%)", 1, 20, 10)
+            abo = c2.number_input("Abono $", min_value=0.0)
+            if st.form_submit_button("Calcular Saldo"):
+                saldo = (val * (por/100)) - abo
+                conn.execute("INSERT INTO devoluciones_iva (nombre, valor_solicitado, porcentaje, abono, saldo) VALUES (?,?,?,?,?)", (nom, val, por, abo, saldo))
+                conn.commit()
+                st.success(f"Saldo pendiente: ${saldo}")
+        df_iva = pd.read_sql_query("SELECT * FROM devoluciones_iva", conn)
+        st.dataframe(df_iva)
+
+    # --- SECCIÓN USUARIOS (GESTIÓN COLABORADORES) ---
+    elif pag == "Usuarios":
+        st.header("👥 Gestión de Colaboradores")
+        with st.form("f_users"):
+            nuevo_u = st.text_input("Nombre de Usuario")
+            nuevo_p = st.text_input("Contraseña")
+            rol = st.selectbox("Rol", ["colaborador", "admin"])
+            if st.form_submit_button("Crear Usuario"):
+                try:
+                    conn.execute("INSERT INTO usuarios (usuario, password, rol) VALUES (?,?,?)", (nuevo_u, nuevo_p, rol))
                     conn.commit()
-                    st.rerun()
+                    st.success(f"Usuario {nuevo_u} creado.")
+                except:
+                    st.error("El usuario ya existe.")
         
-        df = pd.read_sql_query("SELECT nombre, noveno_digito, tipo_dec, celular FROM declaraciones_fijas", conn)
-        st.dataframe(df, use_container_width=True)
+        st.subheader("Usuarios Actuales")
+        df_u = pd.read_sql_query("SELECT usuario, rol FROM usuarios", conn)
+        st.table(df_u)
 
-    # (Las demás secciones IVA y Colaboradores se mantienen con tu lógica anterior)
     conn.close()
-
-def main():
-    st.set_page_config(page_title="Ashka Consultores", layout="wide")
-    crear_tablas()
-    if not st.session_state.get('autenticado'):
-        login()
-    else:
-        menu_principal()
 
 if __name__ == "__main__":
     main()
